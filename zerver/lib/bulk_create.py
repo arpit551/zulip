@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from zerver.lib.initial_password import initial_password
 from zerver.models import Realm, Stream, UserProfile, \
@@ -51,6 +51,8 @@ def bulk_create_users(realm: Realm,
                                               type=Recipient.PERSONAL))
     Recipient.objects.bulk_create(recipients_to_create)
 
+    bulk_set_users_personal_recipients(profiles_to_create, recipients_to_create)
+
     recipients_by_email = {}  # type: Dict[str, Recipient]
     for recipient in recipients_to_create:
         recipients_by_email[profiles_by_id[recipient.type_id].email] = recipient
@@ -61,6 +63,23 @@ def bulk_create_users(realm: Realm,
             Subscription(user_profile_id=profiles_by_email[email].id,
                          recipient=recipients_by_email[email]))
     Subscription.objects.bulk_create(subscriptions_to_create)
+
+def bulk_set_users_personal_recipients(user_profiles: Iterable[UserProfile],
+                                       recipients: Optional[Iterable[Recipient]]=None) -> None:
+    if recipients is None:
+        user_ids = [user_profile.id for user_profile in user_profiles]
+        recipients = Recipient.objects.filter(type=Recipient.PERSONAL, type_id__in=user_ids)
+
+    user_profiles_dict = dict((user_profile.id, user_profile) for user_profile in user_profiles)
+
+    for recipient in recipients:
+        assert recipient.type == Recipient.PERSONAL
+        user_profile = user_profiles_dict.get(recipient.type_id)
+        if user_profile:
+            user_profile.personal_recipient = recipient
+            # TODO: Django 2.2 has a bulk_update method, so once we manage to migrate to that version,
+            # we take adventage of this, instead of calling save individually.
+            user_profile.save(update_fields=['personal_recipient'])
 
 # This is only sed in populate_db, so doesn't realy need tests
 def bulk_create_streams(realm: Realm,

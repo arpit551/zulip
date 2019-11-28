@@ -417,6 +417,7 @@ python_rules = RuleList(
              'zerver/migrations/0104_fix_unreads.py',
              'zerver/migrations/0206_stream_rendered_description.py',
              'zerver/migrations/0209_user_profile_no_empty_password.py',
+             'zerver/migrations/0256_userprofile_set_personal_recipient_column_values.py',
              'pgroonga/migrations/0002_html_escape_subject.py',
          ]),
          'description': "Don't import models or other code in migrations; see docs/subsystems/schema-migrations.md",

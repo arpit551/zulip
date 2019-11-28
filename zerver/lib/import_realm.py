@@ -18,7 +18,7 @@ from analytics.models import RealmCount, StreamCount, UserCount
 from zerver.lib.actions import UserMessageLite, bulk_insert_ums, \
     do_change_plan_type, do_change_avatar_fields
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
-from zerver.lib.bulk_create import bulk_create_users
+from zerver.lib.bulk_create import bulk_create_users, bulk_set_users_personal_recipients
 from zerver.lib.timestamp import datetime_to_timestamp
 from zerver.lib.export import DATE_FIELDS, \
     Record, TableData, TableName, Field, Path
@@ -834,6 +834,11 @@ def do_import_realm(import_dir: Path, subdomain: str, processes: int=1) -> Realm
         del user_profile_dict['user_permissions']
         del user_profile_dict['groups']
 
+        # This column shouldn't be imported, we'll set the correct values
+        # when Recipient table gets imported.
+        if 'personal_recipient' in user_profile_dict:
+            del user_profile_dict['personal_recipient']
+
     user_profiles = [UserProfile(**item) for item in data['zerver_userprofile']]
     for user_profile in user_profiles:
         user_profile.set_unusable_password()
@@ -861,6 +866,7 @@ def do_import_realm(import_dir: Path, subdomain: str, processes: int=1) -> Realm
                         recipient_field=True, id_field=True)
     update_model_ids(Recipient, data, 'recipient')
     bulk_import_model(data, Recipient)
+    bulk_set_users_personal_recipients(UserProfile.objects.filter(realm=realm))
 
     re_map_foreign_keys(data, 'zerver_subscription', 'user_profile', related_table="user_profile")
     get_huddles_from_subscription(data, 'zerver_subscription')

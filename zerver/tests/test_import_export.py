@@ -948,6 +948,10 @@ class ImportExportTest(ZulipTestCase):
              (imported_polonius_user.id,))
         )
 
+        # Check personal_recipient_id was generated correctly for the imported users.
+        for user_profile in UserProfile.objects.filter(realm=imported_realm):
+            self.assertEqual(user_profile.personal_recipient_id, get_personal_recipient(user_profile.id).id)
+
     def test_import_files_from_local(self) -> None:
 
         realm = Realm.objects.get(string_id='zulip')
