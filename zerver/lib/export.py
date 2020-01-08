@@ -14,6 +14,7 @@ from django.conf import settings
 from django.forms.models import model_to_dict
 from django.utils.timezone import make_aware as timezone_make_aware
 from django.utils.timezone import is_naive as timezone_is_naive
+from itertools import chain
 import glob
 import logging
 import os
@@ -23,7 +24,7 @@ import tempfile
 import shutil
 from scripts.lib.zulip_tools import overwrite_symlink
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
-from analytics.models import RealmCount, UserCount, StreamCount
+from analytics.models import FillState, RealmCount, UserCount, StreamCount
 from zerver.models import UserProfile, Realm, Client, Huddle, Stream, \
     UserMessage, Subscription, Message, RealmEmoji, RealmFilter, Reaction, \
     RealmDomain, Recipient, DefaultStream, get_user_profile_by_id, \
@@ -190,9 +191,6 @@ NON_EXPORTED_TABLES = {
     # recompute it after a fillstate import.
     'analytics_installationcount',
 
-    # Fillstate will require some cleverness to do the right partial export.
-    'analytics_fillstate',
-
     # These are for unfinished features; we'll want to add them ot the
     # export before they reach full production status.
     'zerver_defaultstreamgroup',
@@ -228,6 +226,7 @@ MESSAGE_TABLES = {
 # These get their own file as analytics data can be quite large and
 # would otherwise make realm.json unpleasant to manually inspect
 ANALYTICS_TABLES = {
+    'analytics_fillstate',
     'analytics_realmcount',
     'analytics_streamcount',
     'analytics_usercount',
@@ -250,6 +249,7 @@ DATE_FIELDS = {
     'zerver_userprofile': ['date_joined', 'last_login', 'last_reminder'],
     'zerver_realmauditlog': ['event_time'],
     'zerver_userhotspot': ['timestamp'],
+    'analytics_fillstate': ['end_time', 'last_modified'],
     'analytics_installationcount': ['end_time'],
     'analytics_realmcount': ['end_time'],
     'analytics_usercount': ['end_time'],
@@ -300,6 +300,31 @@ def write_data_to_file(output_file: Path, data: Any) -> None:
     with open(output_file, "w") as f:
         f.write(ujson.dumps(data, indent=4))
 
+def to_dict(instance: Any, fields: Optional[List[Field]]= None,
+            exclude: Optional[List[Field]]= None) -> Dict[str, Any]:
+    """
+    Modified form of model_to_dict function of django which converts non editable fields also.
+
+    Return a dict containing the data in ``instance`` suitable for passing as
+    a Form's ``initial`` keyword argument.
+
+    ``fields`` is an optional list of field names. If provided, return only the
+    named.
+
+    ``exclude`` is an optional list of field names. If provided, exclude the
+    named from the returned dict, even if they are listed in the ``fields``
+    argument.
+    """
+    opts = instance._meta
+    data = {}
+    for f in chain(opts.concrete_fields, opts.private_fields, opts.many_to_many):
+        if fields and f.name not in fields:
+            continue
+        if exclude and f.name in exclude:
+            continue
+        data[f.name] = f.value_from_object(instance)
+    return data
+
 def make_raw(query: Any, exclude: Optional[List[Field]]=None) -> List[Record]:
     '''
     Takes a Django query and returns a JSONable list
@@ -307,9 +332,9 @@ def make_raw(query: Any, exclude: Optional[List[Field]]=None) -> List[Record]:
     '''
     rows = []
     for instance in query:
-        data = model_to_dict(instance, exclude=exclude)
+        data = to_dict(instance, exclude=exclude)
         """
-        In Django 1.11.5, model_to_dict evaluates the QuerySet of
+        to_dict evaluates the QuerySet of
         many-to-many field to give us a list of instances. We require
         a list of primary keys, so we get the primary keys from the
         instances below.
@@ -1643,6 +1668,13 @@ def get_analytics_config() -> Config:
     analytics_config = Config(
         table='zerver_analytics',
         is_seeded=True,
+    )
+
+    Config(
+        table='analytics_fillstate',
+        model=FillState,
+        normal_parent=analytics_config,
+        use_all=True,
     )
 
     Config(

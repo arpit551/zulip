@@ -1,4 +1,5 @@
 import datetime
+from datetime import timedelta
 import logging
 import os
 import ujson
@@ -14,12 +15,12 @@ from django.utils.timezone import utc as timezone_utc, now as timezone_now
 from typing import Any, Dict, List, Optional, Set, Tuple, \
     Iterable, cast
 
-from analytics.models import RealmCount, StreamCount, UserCount
+from analytics.models import FillState, RealmCount, StreamCount, UserCount
 from zerver.lib.actions import UserMessageLite, bulk_insert_ums, \
     do_change_plan_type, do_change_avatar_fields
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
 from zerver.lib.bulk_create import bulk_create_users, bulk_set_users_or_streams_recipient_fields
-from zerver.lib.timestamp import datetime_to_timestamp
+from zerver.lib.timestamp import datetime_to_timestamp, floor_to_hour
 from zerver.lib.export import DATE_FIELDS, \
     Record, TableData, TableName, Field, Path
 from zerver.lib.message import do_render_markdown
@@ -37,6 +38,7 @@ from zerver.models import UserProfile, Realm, Client, Huddle, Stream, \
     Attachment, get_system_bot, email_to_username, get_huddle_hash, \
     UserHotspot, MutedTopic, Service, UserGroup, UserGroupMembership, \
     BotStorageData, BotConfigData, DefaultStream, RealmFilter
+from analytics.lib.counts import CountStat, process_count_stat, get_count_stats, LoggingCountStat
 
 realm_tables = [("zerver_defaultstream", DefaultStream, "defaultstream"),
                 ("zerver_realmemoji", RealmEmoji, "realmemoji"),
@@ -1303,3 +1305,61 @@ def import_analytics_data(realm: Realm, import_dir: Path) -> None:
     re_map_foreign_keys(data, 'analytics_streamcount', 'stream', related_table="stream")
     update_model_ids(StreamCount, data, 'analytics_streamcount')
     bulk_import_model(data, StreamCount)
+
+    fix_datetime_fields(data, 'analytics_fillstate')
+    apply_fill_state(data, 'analytics_fillstate', realm)
+
+def apply_fill_state(data: TableData, table: TableName, realm: Realm) -> None:
+    fill_state = FillState.objects.all()
+    if fill_state is None:
+        # assuming server is empty
+        update_model_ids(FillState, data, 'analytics_fillstate')
+        bulk_import_model(data, FillState)
+    else:
+        for items in data[table]:
+            COUNT_STATS = get_count_stats(realm)
+            stat = COUNT_STATS[items['property']]
+            current_fill_state = fill_state.filter(property = stat.property).first()
+            if stat.frequency == CountStat.HOUR:
+                time_increment = timedelta(hours=1)
+            elif stat.frequency == CountStat.DAY:
+                time_increment = timedelta(days=1)
+
+            items = check_fill_state(items, stat, time_increment, realm)
+            if current_fill_state is None:
+                filters = {'property': stat.property, 'realm': realm}
+                delete_counts_by_filters(filters)
+            elif current_fill_state.end_time <= items['end_time']:
+                extra_filled = items['end_time']
+                while extra_filled > current_fill_state.end_time:
+                    filters = {'property': stat.property, 'end_time': extra_filled, 'realm': realm}
+                    delete_counts_by_filters(filters)
+                    extra_filled = extra_filled - time_increment
+            else:
+                fill_to_time = current_fill_state.last_modified
+                fill_to_time = floor_to_hour(fill_to_time.astimezone(timezone_utc))
+                current_fill_state.end_time = items['end_time']
+                current_fill_state.save()
+                process_count_stat(stat, fill_to_time, realm)
+
+def delete_counts_by_filters(filters: Dict[str, Any]) -> None:
+    COUNT_STATS = get_count_stats(filters['realm'])
+    stat = COUNT_STATS[filters['property']]
+    if isinstance(stat, LoggingCountStat) and stat.data_collector.output_table in [UserCount, StreamCount]:
+        RealmCount.objects.filter(**filters).delete()
+    else:
+        UserCount.objects.filter(**filters).delete()
+        StreamCount.objects.filter(**filters).delete()
+        RealmCount.objects.filter(**filters).delete()
+
+def check_fill_state(fill_state: Dict[str, Any], stat: CountStat,
+                     time_increment: timedelta, realm: Realm) -> Dict[str, Any]:
+    if fill_state['state'] is FillState.STARTED:
+        filters = {'property': stat.property, 'end_time': fill_state['end_time'], 'realm': realm}
+        delete_counts_by_filters(filters)
+        currently_filled = fill_state['end_time'] - time_increment
+        fill_state['end_time'] = currently_filled
+        fill_state['state'] = FillState.DONE
+        return fill_state
+    else:
+        return fill_state
