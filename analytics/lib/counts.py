@@ -190,7 +190,7 @@ def do_aggregate_to_summary_table(stat: CountStat, end_time: datetime,
         filters['realm_id'] = realm.id
 
     realm_count = RealmCount.objects.filter(**filters)
-    total_value = {} # type: Dict[str, int]
+    total_value = {}  # type: Dict[str, int]
     total_value = defaultdict(lambda: 0, total_value)
     for realm_count_ in realm_count:
         subgroup = realm_count_.subgroup
