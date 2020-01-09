@@ -63,7 +63,7 @@ class DependentCountStat(CountStat):
 
 class DataCollector:
     def __init__(self, output_table: Type[BaseCount],
-                 pull_function: Optional[Callable[[str, datetime, datetime], int]]) -> None:
+                 pull_function: Optional[Callable[[str, datetime, datetime, Realm], int]]) -> None:
         self.output_table = output_table
         self.pull_function = pull_function
 
