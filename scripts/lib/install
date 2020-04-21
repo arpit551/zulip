@@ -276,7 +276,7 @@ EOF
     #
     # (There are more possibilities in the case of dpkg errors.)  Here
     # we are checking for either empty or not-installed.
-    if [ -n "$CIRCLECI" ] || ! dpkg-query --showformat '${Status}\n' -W rabbitmq-server 2>/dev/null | grep -vq ' not-installed$'; then
+    if ! dpkg-query --showformat '${Status}\n' -W rabbitmq-server 2>/dev/null | grep -vq ' not-installed$'; then
         cat <<EOF
 
 [rabbitmq]
@@ -292,7 +292,6 @@ auto_renew = yes
 EOF
     fi
 ) > /etc/zulip/zulip.conf
-
 case ",$PUPPET_CLASSES," in
     *,zulip::voyager,* | *,zulip::dockervoyager,* | *,zulip::app_frontend,*)
         if [ -z "$NO_OVERWRITE_SETTINGS" ] || ! [ -e "/etc/zulip/settings.py" ]; then

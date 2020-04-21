@@ -17,7 +17,7 @@ if ! apt-get dist-upgrade -y "${APT_OPTIONS[@]}"; then
     apt-get dist-upgrade -y "${APT_OPTIONS[@]}"
 fi
 
-# Disable existing rabbitmq node so we can change it
+# # Disable existing rabbitmq node so we can change it
 service rabbitmq-server stop
 rm -rf /var/lib/rabbitmq/mnesia/
 
