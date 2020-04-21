@@ -190,6 +190,6 @@ workflows:
   version: 2
   build:
     jobs:
-      - "bionic-backend-frontend-python3.6"
+      # - "bionic-backend-frontend-python3.6"
       # - "focal-backend-frontend-python3.8"
       - "bionic-production-python3.6"

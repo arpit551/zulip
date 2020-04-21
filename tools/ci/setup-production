@@ -23,7 +23,7 @@ tools/provision --production-circle-ci || {
 cp -a tools/ci/success-http-headers.txt ~/
 source tools/ci/activate-venv
 
-if ! env CIRCLECI=1 ./tools/build-release-tarball circle-ci; then
+if !  ./tools/build-release-tarball circle-ci; then
     echo "Attempting to output failure logging data"
     cat /tmp/tmp.*/update-prod-static.log || true
     exit 1
