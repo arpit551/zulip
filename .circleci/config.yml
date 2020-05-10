@@ -325,3 +325,7 @@ workflows:
       # - "focal-production-install-python3.8":
       #       requires:
       #           - "bionic-production-build-python3.6"
+
+notify:
+  webhooks:
+    - url: https://chat.zulip.org/api/v1/external/circleci?api_key=VqGSrjUrfmsPpZdazqVuMDOLLca2Y7Vt&stream=test%20here
