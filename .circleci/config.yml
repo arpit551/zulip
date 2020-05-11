@@ -208,9 +208,9 @@ jobs:
       steps:
         - checkout
         - run:
-          name: pipleline
-          command: |
-            echo "<< pipeline >>"
+            name: pipleline
+            command: |
+              echo "<< pipeline >>"
         - *create_cache_directories
         - *restore_cache_package_json
         - *restore_cache_requirements
