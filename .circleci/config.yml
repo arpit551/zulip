@@ -210,7 +210,7 @@ jobs:
         - run:
           name: pipleline
           command: |
-            echo "<< pipeline.id >>"
+            echo "<< pipeline >>"
         - *create_cache_directories
         - *restore_cache_package_json
         - *restore_cache_requirements
