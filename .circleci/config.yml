@@ -147,7 +147,7 @@ aliases:
       branches:
         only: circleci_notify_backup
       command: |
-        if [[ "$CIRCLE_REPOSITORY_URL" == "git@github.com:zulip/zulip.git" ]]; then
+        if [[ "$CIRCLE_REPOSITORY_URL" == "git@github.com:arpit551/zulip.git" ]]; then
           curl  -H "Content-Type: application/json" \
           -X POST -i 'https://chat.zulip.org/api/v1/external/circleci?api_key='"$test"'&stream=test%20here&topic=master%20failing' \
           -d '{"payload": { "branch": "'"$test"'", "reponame": "'"$CIRCLE_PROJECT_REPONAME"'", "status": "failed", "build_url": "'"$CIRCLE_BUILD_URL"'", "username": "'"$CIRCLE_USERNAME"'", "previous": {"status": "yeah"}}}'
