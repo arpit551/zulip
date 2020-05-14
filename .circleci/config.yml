@@ -147,8 +147,7 @@ aliases:
       branches:
         only: circleci_notify_backup
       command: |
-        if [[ "$CIRCLE_REPOSITORY_URL" == 'git@github.com:arpit551/zulip.git' ]]; then
-          echo $test
+        if [[ "$CIRCLE_REPOSITORY_URL" == "git@github.com:zulip/zulip.git" ]]; then
           curl  -H "Content-Type: application/json" \
           -X POST -i 'https://chat.zulip.org/api/v1/external/circleci?api_key='"$test"'&stream=test%20here&topic=master%20failing' \
           -d '{"payload": { "branch": "'"$test"'", "reponame": "'"$CIRCLE_PROJECT_REPONAME"'", "status": "failed", "build_url": "'"$CIRCLE_BUILD_URL"'", "username": "'"$CIRCLE_USERNAME"'", "previous": {"status": "yeah"}}}'
@@ -323,13 +322,13 @@ workflows:
   version: 2
   build:
     jobs:
-      - "bionic-backend-frontend-python3.6"
-      - "bionic-production-build-python3.6"
+      # - "bionic-backend-frontend-python3.6"
+      # - "bionic-production-build-python3.6"
       - "focal-backend-python3.8"
-      - "xenial-legacy"
-      - "bionic-production-install-python3.6":
-            requires:
-                - "bionic-production-build-python3.6"
+      # - "xenial-legacy"
+      # - "bionic-production-install-python3.6":
+      #       requires:
+      #           - "bionic-production-build-python3.6"
       # - "focal-production-install-python3.8":
       #       requires:
       #           - "bionic-production-build-python3.6"
