@@ -316,6 +316,7 @@ jobs:
           name: memcached hack
           command: |
             echo "export SASL_CONF_PATH=/etc/sasl2" | sudo tee - a /etc/default/memcached
+
       - *production_extract_tarball
       - *restore_cache_package_json
       - *install_production
