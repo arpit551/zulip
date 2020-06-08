@@ -20,12 +20,14 @@ from analytics.models import BaseCount, \
 from zerver.lib.actions import do_activate_user, do_create_user, \
     do_deactivate_user, do_reactivate_user, update_user_activity_interval, \
     do_invite_users, do_revoke_user_invite, do_resend_user_invite_email, \
+    do_mark_stream_messages_as_read, do_mark_all_as_read, \
+    do_update_message_flags, check_send_message, check_send_stream_message, \
     InvitationError
 from zerver.lib.create_user import create_user
 from zerver.lib.timestamp import TimezoneNotUTCException, floor_to_day
 from zerver.lib.topic import DB_TOPIC_NAME
 from zerver.models import Client, Huddle, Message, Realm, \
-    RealmAuditLog, Recipient, Stream, UserActivityInterval, \
+    RealmAuditLog, Recipient, Stream, Subscription, UserActivityInterval, \
     UserProfile, get_client, get_user, PreregistrationUser
 
 class AnalyticsTestCase(TestCase):
@@ -44,7 +46,7 @@ class AnalyticsTestCase(TestCase):
         # used as defaults in self.assertCountEquals
         self.current_property: Optional[str] = None
 
-    # Lightweight creation of users, streams, and messages
+    # Lightweight creation of users, streams, messages and subscriptions.
     def create_user(self, **kwargs: Any) -> UserProfile:
         self.name_counter += 1
         defaults = {
@@ -103,6 +105,41 @@ class AnalyticsTestCase(TestCase):
         for key, value in defaults.items():
             kwargs[key] = kwargs.get(key, value)
         return Message.objects.create(**kwargs)
+
+    def subscribe(self, user_profile: UserProfile, recipient: Recipient) -> None:
+        Subscription.objects.create(user_profile=user_profile, recipient=recipient)
+
+    # Actual creation and sending of messages.
+    def send_personal_message(self, from_user: UserProfile, to_user: UserProfile, content: str="test content",
+                              sending_client: Optional[Client]=None) -> int:
+        recipient_list = [to_user.id]
+
+        if not sending_client:
+            sending_client = get_client("website")
+
+        return check_send_message(
+            from_user, sending_client, 'private', recipient_list, None,
+            content
+        )
+
+    def send_stream_message(self, sender: UserProfile, stream_name: str, content: str="test content",
+                            topic_name: str="test",
+                            recipient_realm: Optional[Realm]=None,
+                            sending_client: Optional[Client]=None) -> int:
+
+        if not sending_client:
+            sending_client = get_client("website")
+        if not recipient_realm:
+            recipient_realm = self.default_realm
+
+        return check_send_stream_message(
+            sender=sender,
+            client=sending_client,
+            stream_name=stream_name,
+            topic=topic_name,
+            body=content,
+            realm=recipient_realm,
+        )
 
     # kwargs should only ever be a UserProfile or Stream.
     def assertCountEquals(self, table: Type[BaseCount], value: int, property: Optional[str]=None,
@@ -1100,6 +1137,62 @@ class TestLoggingCountStats(AnalyticsTestCase):
         # Resending invite should cost you
         do_resend_user_invite_email(PreregistrationUser.objects.first())
         assertInviteCountEquals(6)
+
+    def test_messages_read_hour(self) -> None:
+        property = 'messages_read::hour'
+
+        user1 = self.create_user()
+        user2 = self.create_user()
+        stream, recipient = self.create_stream_with_recipient()
+        self.subscribe(user1, recipient)
+        self.subscribe(user2, recipient)
+
+        self.send_personal_message(user1, user2)
+        client = get_client("website")
+        do_mark_all_as_read(user2, client)
+        self.assertEqual(1, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        self.send_stream_message(user1, stream.name)
+        self.send_stream_message(user1, stream.name)
+        do_mark_stream_messages_as_read(user2, client, stream)
+        self.assertEqual(3, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        message = self.send_stream_message(user2, stream.name)
+        do_update_message_flags(user1, client, 'add', 'read', [message])
+        self.assertEqual(4, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        # TODO: Add tests where do_update_pointer is called.
+
+    def test_messages_read_interactions_hour(self) -> None:
+        property = 'messages_read_interactions::hour'
+
+        user1 = self.create_user()
+        user2 = self.create_user()
+        stream, recipient = self.create_stream_with_recipient()
+        self.subscribe(user1, recipient)
+        self.subscribe(user2, recipient)
+
+        self.send_personal_message(user1, user2)
+        client = get_client("website")
+        do_mark_all_as_read(user2, client)
+        self.assertEqual(1, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        self.send_stream_message(user1, stream.name)
+        self.send_stream_message(user1, stream.name)
+        do_mark_stream_messages_as_read(user2, client, stream)
+        self.assertEqual(2, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        message = self.send_stream_message(user2, stream.name)
+        do_update_message_flags(user1, client, 'add', 'read', [message])
+        self.assertEqual(3, UserCount.objects.filter(property=property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        # TODO: Add tests where do_update_pointer is called.
 
 class TestDeleteStats(AnalyticsTestCase):
     def test_do_drop_all_analytics_tables(self) -> None:
