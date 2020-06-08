@@ -143,7 +143,7 @@ from zerver.lib.cache import cache_with_key, cache_set, \
     user_profile_by_email_cache_key, \
     cache_set_many, cache_delete, cache_delete_many
 from zerver.decorator import statsd_increment
-from zerver.lib.utils import log_statsd_event, statsd
+from zerver.lib.utils import log_statsd_event
 from zerver.lib.i18n import get_language_name
 from zerver.lib.alert_words import add_user_alert_words, \
     remove_user_alert_words
@@ -3986,6 +3986,12 @@ def do_update_pointer(user_profile: UserProfile, client: Client,
                                    message__id__lte=pointer).extra(where=[UserMessage.where_unread()]) \
             .update(flags=F('flags').bitor(UserMessage.flags.read))
         do_clear_mobile_push_notifications_for_ids(user_profile, app_message_ids)
+        event_time = timezone_now()
+
+        do_increment_logging_stat(user_profile, COUNT_STATS['messages_read::hour'],
+                                  None, event_time, increment=len(app_message_ids))
+        do_increment_logging_stat(user_profile, COUNT_STATS['messages_read_interactions::hour'],
+                                  None, event_time)
 
     event = dict(type='pointer', pointer=pointer)
     send_event(user_profile.realm, event, [user_profile.id])
@@ -4041,9 +4047,14 @@ def do_mark_all_as_read(user_profile: UserProfile, client: Client) -> int:
         messages=[],  # we don't send messages, since the client reloads anyway
         all=True
     )
+    event_time = timezone_now()
+
     send_event(user_profile.realm, event, [user_profile.id])
 
-    statsd.incr("mark_all_as_read", count)
+    do_increment_logging_stat(user_profile, COUNT_STATS['messages_read::hour'],
+                              None, event_time, increment=count)
+    do_increment_logging_stat(user_profile, COUNT_STATS['messages_read_interactions::hour'],
+                              None, event_time)
 
     all_push_message_ids = UserMessage.objects.filter(
         user_profile=user_profile,
@@ -4090,10 +4101,15 @@ def do_mark_stream_messages_as_read(user_profile: UserProfile,
         messages=message_ids,
         all=False,
     )
+    event_time = timezone_now()
+
     send_event(user_profile.realm, event, [user_profile.id])
     do_clear_mobile_push_notifications_for_ids(user_profile, message_ids)
 
-    statsd.incr("mark_stream_as_read", count)
+    do_increment_logging_stat(user_profile, COUNT_STATS['messages_read::hour'],
+                              None, event_time, increment=count)
+    do_increment_logging_stat(user_profile, COUNT_STATS['messages_read_interactions::hour'],
+                              None, event_time)
     return count
 
 def do_clear_mobile_push_notifications_for_ids(user_profile: UserProfile,
@@ -4177,9 +4193,13 @@ def do_update_message_flags(user_profile: UserProfile,
     send_event(user_profile.realm, event, [user_profile.id])
 
     if flag == "read" and operation == "add":
+        event_time = timezone_now()
         do_clear_mobile_push_notifications_for_ids(user_profile, messages)
 
-    statsd.incr("flags.%s.%s" % (flag, operation), count)
+        do_increment_logging_stat(user_profile, COUNT_STATS['messages_read::hour'],
+                                  None, event_time, increment=count)
+        do_increment_logging_stat(user_profile, COUNT_STATS['messages_read_interactions::hour'],
+                                  None, event_time)
     return count
 
 class MessageUpdateUserInfoResult(TypedDict):

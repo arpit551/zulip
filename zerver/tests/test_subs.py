@@ -1037,7 +1037,7 @@ class StreamAdminTest(ZulipTestCase):
         those you aren't on.
         """
         result = self.attempt_unsubscribe_of_principal(
-            query_count=21, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
+            query_count=25, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
             invite_only=False, target_users_subbed=True)
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 1)
@@ -1048,7 +1048,7 @@ class StreamAdminTest(ZulipTestCase):
         If you're an admin, you can remove multiple users from a stream,
         """
         result = self.attempt_unsubscribe_of_principal(
-            query_count=30, target_users=[self.example_user('cordelia'), self.example_user('prospero')],
+            query_count=38, target_users=[self.example_user('cordelia'), self.example_user('prospero')],
             is_admin=True, is_subbed=True, invite_only=False, target_users_subbed=True)
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 2)
@@ -1060,7 +1060,7 @@ class StreamAdminTest(ZulipTestCase):
         are on.
         """
         result = self.attempt_unsubscribe_of_principal(
-            query_count=21, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
+            query_count=25, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
             invite_only=True, target_users_subbed=True)
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 1)
@@ -1072,7 +1072,7 @@ class StreamAdminTest(ZulipTestCase):
         streams you aren't on.
         """
         result = self.attempt_unsubscribe_of_principal(
-            query_count=21, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=False,
+            query_count=25, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=False,
             invite_only=True, target_users_subbed=True, other_sub_users=[self.example_user("othello")])
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 1)
@@ -1088,7 +1088,7 @@ class StreamAdminTest(ZulipTestCase):
 
     def test_admin_remove_others_from_stream_legacy_emails(self) -> None:
         result = self.attempt_unsubscribe_of_principal(
-            query_count=21, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
+            query_count=25, target_users=[self.example_user('cordelia')], is_admin=True, is_subbed=True,
             invite_only=False, target_users_subbed=True, using_legacy_emails=True)
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 1)
@@ -1096,7 +1096,7 @@ class StreamAdminTest(ZulipTestCase):
 
     def test_admin_remove_multiple_users_from_stream_legacy_emails(self) -> None:
         result = self.attempt_unsubscribe_of_principal(
-            query_count=30, target_users=[self.example_user('cordelia'), self.example_user('prospero')],
+            query_count=38, target_users=[self.example_user('cordelia'), self.example_user('prospero')],
             is_admin=True, is_subbed=True, invite_only=False, target_users_subbed=True, using_legacy_emails=True)
         json = self.assert_json_success(result)
         self.assertEqual(len(json["removed"]), 2)
