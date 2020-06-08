@@ -606,6 +606,10 @@ def get_count_stats(realm: Optional[Realm]=None) -> Dict[str, CountStat]:
                   sql_data_collector(RealmCount, count_user_by_realm_query(realm), (UserProfile, 'is_bot')),
                   CountStat.DAY, interval=TIMEDELTA_MAX),
 
+        # Messages read stats
+        LoggingCountStat('messages_read::hour', UserCount, CountStat.HOUR),
+        LoggingCountStat('messages_read_interactions::hour', UserCount, CountStat.HOUR),
+
         # User Activity stats
         # Stats that measure user activity in the UserActivityInterval sense.
 
