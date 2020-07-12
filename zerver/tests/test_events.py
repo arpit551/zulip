@@ -1623,14 +1623,13 @@ class NormalActionsTest(BaseAction):
                     lambda: do_change_notification_settings(
                         self.user_profile,
                         notification_setting,
-                        setting_value,
-                        log=False))
+                        setting_value))
                 schema_checker('events[0]', events[0])
 
                 # Also test with notification_settings_null=True
                 events = self.verify_action(
                     lambda: do_change_notification_settings(
-                        self.user_profile, notification_setting, setting_value, log=False),
+                        self.user_profile, notification_setting, setting_value),
                     notification_settings_null=True,
                     state_change_expected=False)
                 schema_checker('events[0]', events[0])
@@ -1648,8 +1647,7 @@ class NormalActionsTest(BaseAction):
             lambda: do_change_notification_settings(
                 self.user_profile,
                 notification_setting,
-                'ding',
-                log=False))
+                'ding'))
         schema_checker('events[0]', events[0])
 
     def test_change_desktop_icon_count_display(self) -> None:
@@ -1665,8 +1663,7 @@ class NormalActionsTest(BaseAction):
             lambda: do_change_notification_settings(
                 self.user_profile,
                 notification_setting,
-                2,
-                log=False))
+                2))
         schema_checker('events[0]', events[0])
 
         schema_checker = check_events_dict([
@@ -1680,8 +1677,7 @@ class NormalActionsTest(BaseAction):
             lambda: do_change_notification_settings(
                 self.user_profile,
                 notification_setting,
-                1,
-                log=False))
+                1))
         schema_checker('events[0]', events[0])
 
     def test_realm_update_plan_type(self) -> None:
