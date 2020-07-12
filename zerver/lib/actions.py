@@ -769,9 +769,20 @@ def do_set_realm_message_editing(realm: Realm,
     )
     send_event(realm, event, active_user_ids(realm.id))
 
-def do_set_realm_notifications_stream(realm: Realm, stream: Optional[Stream], stream_id: int) -> None:
+def do_set_realm_notifications_stream(realm: Realm, stream: Optional[Stream], stream_id: int,
+                                      acting_user: Optional[UserProfile]=None) -> None:
+    old_value = getattr(realm, 'notifications_stream')
     realm.notifications_stream = stream
     realm.save(update_fields=['notifications_stream'])
+
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=realm, event_type=RealmAuditLog.REALM_PROPERTY_CHANGED, event_time=event_time,
+        acting_user=acting_user, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: {'property': 'notifications_stream', 'value': old_value},
+            RealmAuditLog.NEW_VALUE: {'property': 'notifications_stream', 'value': stream_id}
+        }))
+
     event = dict(
         type="realm",
         op="update",
@@ -780,10 +791,19 @@ def do_set_realm_notifications_stream(realm: Realm, stream: Optional[Stream], st
     )
     send_event(realm, event, active_user_ids(realm.id))
 
-def do_set_realm_signup_notifications_stream(realm: Realm, stream: Optional[Stream],
-                                             stream_id: int) -> None:
+def do_set_realm_signup_notifications_stream(realm: Realm, stream: Optional[Stream], stream_id: int,
+                                             acting_user: Optional[UserProfile]=None) -> None:
+    old_value = getattr(realm, 'signup_notifications_stream')
     realm.signup_notifications_stream = stream
     realm.save(update_fields=['signup_notifications_stream'])
+
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=realm, event_type=RealmAuditLog.REALM_PROPERTY_CHANGED, event_time=event_time,
+        acting_user=acting_user, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: {'property': 'signup_notifications_stream', 'value': old_value},
+            RealmAuditLog.NEW_VALUE: {'property': 'signup_notifications_stream', 'value': stream_id}
+        }))
     event = dict(
         type="realm",
         op="update",
@@ -2716,14 +2736,7 @@ def get_subscriber_emails(stream: Stream,
 def notify_subscriptions_added(user_profile: UserProfile,
                                sub_pairs: Iterable[Tuple[Subscription, Stream]],
                                stream_user_ids: Callable[[Stream], List[int]],
-                               recent_traffic: Dict[int, int],
-                               no_log: bool=False) -> None:
-    if not no_log:
-        log_event({'type': 'subscription_added',
-                   'user': user_profile.email,
-                   'names': [stream.name for sub, stream in sub_pairs],
-                   'realm': user_profile.realm.string_id})
-
+                               recent_traffic: Dict[int, int]) -> None:
     sub_dicts = []
     for (subscription, stream) in sub_pairs:
         sub_dict = stream.to_dict()
@@ -2991,13 +3004,7 @@ def get_available_notification_sounds() -> List[str]:
 
     return available_notification_sounds
 
-def notify_subscriptions_removed(user_profile: UserProfile, streams: Iterable[Stream],
-                                 no_log: bool=False) -> None:
-    if not no_log:
-        log_event({'type': 'subscription_removed',
-                   'user': user_profile.email,
-                   'names': [stream.name for stream in streams],
-                   'realm': user_profile.realm.string_id})
+def notify_subscriptions_removed(user_profile: UserProfile, streams: Iterable[Stream]) -> None:
 
     payload = [dict(name=stream.name, stream_id=stream.id) for stream in streams]
     event = dict(type="subscription", op="remove",
@@ -3141,18 +3148,9 @@ def bulk_remove_subscriptions(users: Iterable[UserProfile],
         not_subscribed,
     )
 
-def log_subscription_property_change(user_email: str, stream_name: str, property: str,
-                                     value: Any) -> None:
-    event = {'type': 'subscription_property',
-             'property': property,
-             'user': user_email,
-             'stream_name': stream_name,
-             'value': value}
-    log_event(event)
-
 def do_change_subscription_property(user_profile: UserProfile, sub: Subscription,
                                     stream: Stream, property_name: str, value: Any,
-                                    ) -> None:
+                                    acting_user: Optional[UserProfile]=None) -> None:
     database_property_name = property_name
     event_property_name = property_name
     database_value = value
@@ -3168,10 +3166,18 @@ def do_change_subscription_property(user_profile: UserProfile, sub: Subscription
         event_property_name = "in_home_view"
         event_value = not value
 
+    old_value = getattr(sub, database_property_name)
     setattr(sub, database_property_name, database_value)
     sub.save(update_fields=[database_property_name])
-    log_subscription_property_change(user_profile.email, stream.name,
-                                     database_property_name, database_value)
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=user_profile.realm, event_type=RealmAuditLog.SUBSCRIPTION_PROPERTY_CHANGED,
+        event_time=event_time, modified_user=user_profile, acting_user=acting_user,
+        modified_stream=stream, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: {'property': database_property_name, 'value': old_value},
+            RealmAuditLog.NEW_VALUE: {'property': database_property_name, 'value': database_value}
+        }))
+
     event = dict(type="subscription",
                  op="update",
                  email=user_profile.email,
@@ -3374,15 +3380,16 @@ def do_delete_avatar_image(user: UserProfile, acting_user: Optional[UserProfile]
     do_change_avatar_fields(user, UserProfile.AVATAR_FROM_GRAVATAR, acting_user=acting_user)
     delete_avatar_image(user)
 
-def do_change_icon_source(realm: Realm, icon_source: str, log: bool=True) -> None:
+def do_change_icon_source(realm: Realm, icon_source: str, acting_user: Optional[UserProfile]=None) -> None:
     realm.icon_source = icon_source
     realm.icon_version += 1
     realm.save(update_fields=["icon_source", "icon_version"])
 
-    if log:
-        log_event({'type': 'realm_change_icon',
-                   'realm': realm.string_id,
-                   'icon_source': icon_source})
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(realm=realm,
+                                 event_type=RealmAuditLog.REALM_ICON_SOURCE_CHANGED,
+                                 extra_data={'icon_source': icon_source},
+                                 event_time=event_time, acting_user=acting_user)
 
     send_event(realm,
                dict(type='realm',
@@ -3449,13 +3456,20 @@ def do_change_plan_type(realm: Realm, plan_type: int) -> None:
     send_event(realm, event, active_user_ids(realm.id))
 
 def do_change_default_sending_stream(user_profile: UserProfile, stream: Optional[Stream],
-                                     log: bool=True) -> None:
+                                     acting_user: Optional[UserProfile]=None) -> None:
+    old_value = getattr(user_profile, 'default_sending_stream')
     user_profile.default_sending_stream = stream
     user_profile.save(update_fields=['default_sending_stream'])
-    if log:
-        log_event({'type': 'user_change_default_sending_stream',
-                   'user': user_profile.email,
-                   'stream': str(stream)})
+
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=user_profile.realm, event_type=RealmAuditLog.USER_DEFAULT_SENDING_STREAM_CHANGED,
+        event_time=event_time, modified_user=user_profile,
+        acting_user=acting_user, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: old_value,
+            RealmAuditLog.NEW_VALUE: stream,
+        }))
+
     if user_profile.is_bot:
         if stream:
             stream_name: Optional[str] = stream.name
@@ -3471,13 +3485,20 @@ def do_change_default_sending_stream(user_profile: UserProfile, stream: Optional
 
 def do_change_default_events_register_stream(user_profile: UserProfile,
                                              stream: Optional[Stream],
-                                             log: bool=True) -> None:
+                                             acting_user: Optional[UserProfile]=None) -> None:
+    old_value = getattr(user_profile, 'default_events_register_stream')
     user_profile.default_events_register_stream = stream
     user_profile.save(update_fields=['default_events_register_stream'])
-    if log:
-        log_event({'type': 'user_change_default_events_register_stream',
-                   'user': user_profile.email,
-                   'stream': str(stream)})
+
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=user_profile.realm, event_type=RealmAuditLog.USER_DEFAULT_REGISTER_STREAM_CHANGED,
+        event_time=event_time, modified_user=user_profile,
+        acting_user=acting_user, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: old_value,
+            RealmAuditLog.NEW_VALUE: stream,
+        }))
+
     if user_profile.is_bot:
         if stream:
             stream_name: Optional[str] = stream.name
@@ -3492,13 +3513,20 @@ def do_change_default_events_register_stream(user_profile: UserProfile,
                    bot_owner_user_ids(user_profile))
 
 def do_change_default_all_public_streams(user_profile: UserProfile, value: bool,
-                                         log: bool=True) -> None:
+                                         acting_user: Optional[UserProfile]=None) -> None:
+    old_value = getattr(user_profile, 'default_all_public_streams')
     user_profile.default_all_public_streams = value
     user_profile.save(update_fields=['default_all_public_streams'])
-    if log:
-        log_event({'type': 'user_change_default_all_public_streams',
-                   'user': user_profile.email,
-                   'value': str(value)})
+
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=user_profile.realm, event_type=RealmAuditLog.USER_DEFAULT_ALL_PUBLIC_STREAMS_CHANGED,
+        event_time=event_time, modified_user=user_profile,
+        acting_user=acting_user, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: old_value,
+            RealmAuditLog.NEW_VALUE: value,
+        }))
+
     if user_profile.is_bot:
         send_event(user_profile.realm,
                    dict(type='realm_bot',
@@ -3582,16 +3610,18 @@ def do_change_stream_post_policy(stream: Stream, stream_post_policy: int) -> Non
 
 def do_rename_stream(stream: Stream,
                      new_name: str,
-                     user_profile: UserProfile,
-                     log: bool=True) -> Dict[str, str]:
+                     user_profile: UserProfile) -> Dict[str, str]:
     old_name = stream.name
     stream.name = new_name
     stream.save(update_fields=["name"])
 
-    if log:
-        log_event({'type': 'stream_name_change',
-                   'realm': stream.realm.string_id,
-                   'new_name': new_name})
+    RealmAuditLog.objects.create(
+        realm=stream.realm, acting_user=user_profile, modified_stream=stream,
+        event_type=RealmAuditLog.STREAM_NAME_CHANGED, event_time=timezone_now(),
+        extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: old_name,
+            RealmAuditLog.NEW_VALUE: new_name,
+        }))
 
     recipient_id = stream.recipient_id
     messages = Message.objects.filter(recipient_id=recipient_id).only("id")
@@ -3744,11 +3774,13 @@ def do_create_realm(string_id: str, name: str,
     return realm
 
 def do_change_notification_settings(user_profile: UserProfile, name: str,
-                                    value: Union[bool, int, str], log: bool=True) -> None:
+                                    value: Union[bool, int, str],
+                                    acting_user: Optional[UserProfile]=None) -> None:
     """Takes in a UserProfile object, the name of a global notification
     preference to update, and the value to update to
     """
 
+    old_value = getattr(user_profile, name)
     notification_setting_type = UserProfile.notification_setting_types[name]
     assert isinstance(value, notification_setting_type), (
         f'Cannot update {name}: {value} is not an instance of {notification_setting_type}')
@@ -3764,8 +3796,14 @@ def do_change_notification_settings(user_profile: UserProfile, name: str,
              'user': user_profile.email,
              'notification_name': name,
              'setting': value}
-    if log:
-        log_event(event)
+    event_time = timezone_now()
+    RealmAuditLog.objects.create(
+        realm=user_profile.realm, event_type=RealmAuditLog.USER_NOTIFICATION_SETTINGS_CHANGED, event_time=event_time,
+        acting_user=acting_user, modified_user=user_profile, extra_data=ujson.dumps({
+            RealmAuditLog.OLD_VALUE: {'property': name, 'value': old_value},
+            RealmAuditLog.NEW_VALUE: {'property': name, 'value': value}
+        }))
+
     send_event(user_profile.realm, event, [user_profile.id])
 
 def do_change_enter_sends(user_profile: UserProfile, enter_sends: bool) -> None:
