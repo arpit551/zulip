@@ -2516,6 +2516,7 @@ class RealmPropertyActionTest(BaseAction):
                 Realm.VIDEO_CHAT_PROVIDERS['jitsi_meet']['id'],
             ],
             default_code_block_language=['python', 'javascript'],
+            message_content_delete_limit_seconds=[1000, 1100, 1200]
         )
 
         vals = test_values.get(name)
